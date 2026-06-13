@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Football AI Predictor</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; background: #111827; color: #f9fafb; }
+    header { padding: 28px 32px; border-bottom: 1px solid #374151; background: #0b1220; }
+    main { display: grid; gap: 20px; padding: 24px; max-width: 1180px; margin: auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+    .card { background: #1f2937; border: 1px solid #374151; border-radius: 16px; padding: 18px; box-shadow: 0 10px 30px rgb(0 0 0 / 18%); }
+    label { display:block; margin-top: 10px; font-size: 13px; color:#cbd5e1; }
+    input, select { width: 100%; box-sizing: border-box; margin-top: 5px; padding: 10px; border-radius: 10px; border: 1px solid #4b5563; background: #111827; color: #f9fafb; }
+    button { margin-top: 14px; padding: 10px 14px; border: 0; border-radius: 10px; background: #22c55e; color: #06210f; font-weight: 700; cursor: pointer; }
+    button.secondary { background: #93c5fd; color: #081a35; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #0b1220; border: 1px solid #334155; padding: 12px; border-radius: 12px; max-height: 420px; overflow: auto; }
+    .muted { color:#9ca3af; }
+    .prob { display:flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+    .pill { padding: 10px 12px; background: #0b1220; border-radius: 999px; border: 1px solid #334155; }
+    h1 { margin: 0 0 4px; }
+    h2 { margin-top: 0; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Football AI Predictor</h1>
+  <div class="muted">Forma + siła rywali + miejsce meczu + kursy + prosty model ML</div>
+</header>
+<main>
+  <section class="grid">
+    <div class="card">
+      <h2>1. Wgraj dane CSV</h2>
+      <p class="muted">Obsługuje Kaggle international results albo football-data.co.uk.</p>
+      <input id="csv" type="file" accept=".csv" />
+      <button onclick="uploadCsv()">Wgraj CSV</button>
+      <button class="secondary" onclick="trainModel()">Trenuj model</button>
+      <pre id="trainOut">Najpierw wgraj CSV, potem trenuj.</pre>
+    </div>
+
+    <div class="card">
+      <h2>2. Przewidź mecz</h2>
+      <label>Gospodarz / pierwszy zespół</label><input id="home" value="Mexico" />
+      <label>Gość / drugi zespół</label><input id="away" value="South Africa" />
+      <label>Data</label><input id="date" type="date" />
+      <label>Kraj meczu</label><input id="country" value="Mexico" />
+      <label>Turniej</label><input id="tournament" value="FIFA World Cup" />
+      <label><input id="neutral" type="checkbox" style="width:auto" /> neutralny teren</label>
+      <label>Kurs 1</label><input id="oddsHome" type="number" step="0.01" placeholder="np. 1.85" />
+      <label>Kurs X</label><input id="oddsDraw" type="number" step="0.01" placeholder="np. 3.40" />
+      <label>Kurs 2</label><input id="oddsAway" type="number" step="0.01" placeholder="np. 4.80" />
+      <button onclick="predict()">Analizuj</button>
+      <pre id="predictOut">Tu pojawi się analiza.</pre>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>3. Kursy z internetu</h2>
+      <p class="muted">W .env ustaw ODDS_API_KEY. Sport key dla mundialu może się różnić, więc lista /odds/sports pomaga go znaleźć.</p>
+      <label>Sport key</label><input id="sportKey" value="soccer_fifa_world_cup" />
+      <button onclick="fetchOdds()">Pobierz kursy dla meczu</button>
+      <button class="secondary" onclick="fetchSports()">Pokaż soccer sports</button>
+      <pre id="oddsOut">Bez klucza API zobaczysz komunikat.</pre>
+    </div>
+
+    <div class="card">
+      <h2>4. Dopisz wynik po meczu</h2>
+      <p class="muted">Po meczu dodaj wynik, a aplikacja odświeży stan formy/Elo. Model możesz przetrenować co np. 25 nowych meczów.</p>
+      <label>Gole gospodarza</label><input id="hs" type="number" value="0" />
+      <label>Gole gościa</label><input id="as" type="number" value="0" />
+      <button onclick="addResult()">Zapisz wynik</button>
+      <button class="secondary" onclick="showForm()">Pokaż formę gospodarza</button>
+      <pre id="resultOut">Tu zapiszesz wynik po meczu.</pre>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+$('date').valueAsDate = new Date();
+function jsonOut(id, data) { $(id).textContent = JSON.stringify(data, null, 2); }
+async function uploadCsv() {
+  const f = $('csv').files[0];
+  if (!f) return alert('Wybierz CSV');
+  const fd = new FormData(); fd.append('file', f);
+  const res = await fetch('/upload', {method:'POST', body:fd});
+  jsonOut('trainOut', await res.json());
+}
+async function trainModel() {
+  const res = await fetch('/train', {method:'POST'});
+  jsonOut('trainOut', await res.json());
+}
+function reqBody(includeScore=false) {
+  const body = {
+    home_team: $('home').value,
+    away_team: $('away').value,
+    match_date: $('date').value,
+    country: $('country').value,
+    tournament: $('tournament').value,
+    neutral: $('neutral').checked,
+    odds_home: $('oddsHome').value ? Number($('oddsHome').value) : null,
+    odds_draw: $('oddsDraw').value ? Number($('oddsDraw').value) : null,
+    odds_away: $('oddsAway').value ? Number($('oddsAway').value) : null,
+  };
+  if (includeScore) {
+    body.date = body.match_date;
+    body.home_score = Number($('hs').value);
+    body.away_score = Number($('as').value);
+    delete body.match_date; delete body.odds_home; delete body.odds_draw; delete body.odds_away;
+  }
+  return body;
+}
+async function predict() {
+  const res = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(reqBody())});
+  jsonOut('predictOut', await res.json());
+}
+async function fetchOdds() {
+  const u = `/odds/match?home_team=${encodeURIComponent($('home').value)}&away_team=${encodeURIComponent($('away').value)}&sport_key=${encodeURIComponent($('sportKey').value)}`;
+  const res = await fetch(u);
+  jsonOut('oddsOut', await res.json());
+}
+async function fetchSports() {
+  const res = await fetch('/odds/sports');
+  jsonOut('oddsOut', await res.json());
+}
+async function addResult() {
+  const res = await fetch('/result', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(reqBody(true))});
+  jsonOut('resultOut', await res.json());
+}
+async function showForm() {
+  const res = await fetch(`/team/${encodeURIComponent($('home').value)}/form?limit=10`);
+  jsonOut('resultOut', await res.json());
+}
+</script>
+</body>
+</html>
