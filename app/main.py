@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .schemas import MatchPredictionRequest, MatchResultIn, TrainResponse, PredictionResponse
 from .model import DATA_PATH, train_from_csv, predict_match, append_result_and_refresh_state, team_form
 from .odds import find_odds_for_match, get_soccer_sports
+from .bet_suggestions import build_bet_suggestions
 
 load_dotenv()
 
@@ -54,9 +55,24 @@ def train():
 @app.post("/predict", response_model=PredictionResponse)
 def predict(req: MatchPredictionRequest):
     try:
-        return predict_match(**req.model_dump())
+        payload = req.model_dump()
+
+        include_external_stats = bool(payload.pop("include_external_stats", False))
+        stats_last_matches = int(payload.pop("stats_last_matches", 5) or 5)
+
+        result = predict_match(**payload)
+
+        result["bet_suggestions"] = build_bet_suggestions(
+            prediction=result,
+            include_external_stats=include_external_stats,
+            stats_last_matches=stats_last_matches,
+        )
+
+        return result
+
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -13,7 +13,16 @@ class MatchPredictionRequest(BaseModel):
     odds_home: Optional[float] = Field(None, gt=1.0)
     odds_draw: Optional[float] = Field(None, gt=1.0)
     odds_away: Optional[float] = Field(None, gt=1.0)
-
+    include_external_stats: bool = Field(
+        False,
+        description="Use API-Football for corners/cards/shots suggestions. Costs API requests.",
+    )
+    stats_last_matches: int = Field(
+        5,
+        ge=1,
+        le=10,
+        description="How many recent matches per team to aggregate from API-Football.",
+    )
 
 class MatchResultIn(BaseModel):
     date: str
@@ -44,3 +53,4 @@ class PredictionResponse(BaseModel):
     value_flags: Dict[str, Any]
     feature_snapshot: Dict[str, Any]
     explanation: str
+    bet_suggestions: Optional[Dict[str, Any]] = None
